@@ -1,0 +1,385 @@
+import React from 'react';
+import { useStore } from './store/useStore';
+import { ActiveView } from './types';
+import { Navbar } from './components/Navbar';
+import { HeroCoverflow } from './components/HeroCoverflow';
+import { ProductGrid } from './components/ProductGrid';
+import { ComingSoon } from './components/ComingSoon';
+import { CustomerReviewsGallery } from './components/CustomerReviewsGallery';
+import { WishlistDrawer } from './components/WishlistDrawer';
+
+const CartPage = React.lazy(() =>
+  import('./components/CartPage.tsx').then((m) => ({ default: m.CartPage }))
+);
+const ProductDetailPage = React.lazy(() =>
+  import('./components/ProductDetailPage.tsx').then((m) => ({ default: m.ProductDetailPage }))
+);
+const OrderTrackingView = React.lazy(() =>
+  import('./components/OrderTrackingView.tsx').then((m) => ({ default: m.OrderTrackingView }))
+);
+const WishlistPage = React.lazy(() =>
+  import('./components/WishlistPage.tsx').then((m) => ({ default: m.WishlistPage }))
+);
+const AdminDashboard = React.lazy(() =>
+  import('./components/AdminDashboard.tsx').then((m) => ({ default: m.AdminDashboard }))
+);
+const CheckoutModal = React.lazy(() =>
+  import('./components/CheckoutModal.tsx').then((m) => ({ default: m.CheckoutModal }))
+);
+const QuickLookModal = React.lazy(() =>
+  import('./components/QuickLookModal.tsx').then((m) => ({ default: m.QuickLookModal }))
+);
+const ProductShareModal = React.lazy(() =>
+  import('./components/ProductShareModal.tsx').then((m) => ({ default: m.ProductShareModal }))
+);
+
+import { DeleteConfirmationModal } from './components/DeleteConfirmationModal';
+import { ToastContainer } from './components/ToastContainer';
+import { ShopifyOrderBanner } from './components/ShopifyOrderBanner';
+import { Footer } from './components/Footer';
+import { trackVisit } from './lib/analytics';
+
+interface HistoryState {
+  view: ActiveView;
+  productId?: string | null;
+  isModal?: boolean;
+}
+
+export default function App() {
+  const {
+    activeView,
+    setActiveView,
+    products,
+    selectedProduct,
+    setSelectedProduct,
+    quickLookProduct,
+    closeQuickLook,
+    shareModalProduct,
+    closeShareModal,
+    isCheckoutOpen,
+    setIsCheckoutOpen,
+    isWishlistOpen,
+    setIsWishlistOpen,
+    deleteModalState,
+    closeDeleteModal
+  } = useStore();
+
+  // Flag to know when state changes were triggered by browser popstate (back/forward)
+  const isPoppingRef = React.useRef(false);
+  const isInitializedRef = React.useRef(false);
+  const lastPushedKeyRef = React.useRef<string>('');
+
+  React.useEffect(() => {
+    trackVisit().catch(() => {});
+  }, []);
+
+  // Always keep latest state in a ref so popstate handler always sees fresh values
+  const stateRef = React.useRef({
+    activeView,
+    selectedProduct,
+    quickLookProduct,
+    shareModalProduct,
+    isCheckoutOpen,
+    isWishlistOpen,
+    isDeleteOpen: deleteModalState.isOpen,
+    products
+  });
+
+  React.useEffect(() => {
+    stateRef.current = {
+      activeView,
+      selectedProduct,
+      quickLookProduct,
+      shareModalProduct,
+      isCheckoutOpen,
+      isWishlistOpen,
+      isDeleteOpen: deleteModalState.isOpen,
+      products
+    };
+  });
+
+  // Calculate whether any modal or overlay drawer is currently open
+  const isAnyModalOpen = Boolean(
+    quickLookProduct ||
+    shareModalProduct ||
+    isCheckoutOpen ||
+    isWishlistOpen ||
+    deleteModalState.isOpen
+  );
+
+  // 1. Initial entry point & deep link setup
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const productIdParam = params.get('product');
+
+    if (!isInitializedRef.current) {
+      isInitializedRef.current = true;
+      if (productIdParam) {
+        // If loaded via a shared product link, seed 'home' as the base history entry
+        // so pressing back on mobile navigates to the store home instead of exiting
+        window.history.replaceState({ view: 'home', productId: null, isModal: false } as HistoryState, '', window.location.pathname);
+        window.history.pushState(
+          { view: 'product', productId: productIdParam, isModal: false } as HistoryState,
+          '',
+          `${window.location.pathname}?product=${encodeURIComponent(productIdParam)}`
+        );
+        lastPushedKeyRef.current = `product:${productIdParam}`;
+      } else {
+        const initialKey = `${activeView}:${selectedProduct?.id || ''}`;
+        window.history.replaceState(
+          { view: activeView, productId: selectedProduct?.id || null, isModal: false } as HistoryState,
+          '',
+          window.location.href
+        );
+        lastPushedKeyRef.current = initialKey;
+      }
+    }
+
+    if (productIdParam && products.length > 0) {
+      const matched = products.find((p) => p.id === productIdParam);
+      if (matched && (!selectedProduct || selectedProduct.id !== matched.id)) {
+        setSelectedProduct(matched);
+        setActiveView('product');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
+  }, [products, setSelectedProduct, setActiveView]);
+
+  // 2. Synchronize activeView and selectedProduct with browser history
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !isInitializedRef.current) return;
+    if (isPoppingRef.current) return;
+
+    const currentKey = `${activeView}:${selectedProduct?.id || ''}`;
+    if (currentKey === lastPushedKeyRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    let targetUrl = window.location.pathname;
+
+    if (activeView === 'product' && selectedProduct) {
+      params.set('product', selectedProduct.id);
+      targetUrl = `${window.location.pathname}?${params.toString()}`;
+    } else {
+      if (params.has('product')) {
+        params.delete('product');
+      }
+      const searchStr = params.toString();
+      targetUrl = searchStr ? `${window.location.pathname}?${searchStr}` : window.location.pathname;
+    }
+
+    const stateToPush: HistoryState = {
+      view: activeView,
+      productId: selectedProduct?.id || null,
+      isModal: false
+    };
+
+    window.history.pushState(stateToPush, '', targetUrl);
+    lastPushedKeyRef.current = currentKey;
+  }, [activeView, selectedProduct]);
+
+  // 3. Synchronize open modals with history (so mobile back closes the modal)
+  const prevModalOpenRef = React.useRef(false);
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || !isInitializedRef.current) return;
+
+    if (isAnyModalOpen && !prevModalOpenRef.current && !isPoppingRef.current) {
+      // Modal just opened: push a modal history state
+      window.history.pushState(
+        {
+          view: activeView,
+          productId: selectedProduct?.id || null,
+          isModal: true
+        } as HistoryState,
+        '',
+        window.location.href
+      );
+    } else if (!isAnyModalOpen && prevModalOpenRef.current && !isPoppingRef.current) {
+      // Modal closed via UI (e.g. clicking 'X' or backdrop): clean up the modal state from history
+      if (window.history.state?.isModal) {
+        window.history.back();
+      }
+    }
+
+    prevModalOpenRef.current = isAnyModalOpen;
+  }, [isAnyModalOpen, activeView, selectedProduct]);
+
+  // 4. popstate event listener for Mobile Back button & browser back/forward
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = (event: PopStateEvent) => {
+      const current = stateRef.current;
+      isPoppingRef.current = true;
+
+      // Check if any modal is currently open -> close it first without navigating away
+      if (current.quickLookProduct) {
+        closeQuickLook();
+      } else if (current.shareModalProduct) {
+        closeShareModal();
+      } else if (current.isCheckoutOpen) {
+        setIsCheckoutOpen(false);
+      } else if (current.isWishlistOpen) {
+        setIsWishlistOpen(false);
+      } else if (current.isDeleteOpen) {
+        closeDeleteModal();
+      } else {
+        // No modal open: navigate back to previous view or home
+        const state = event.state as HistoryState | null;
+        const targetView = state?.view || 'home';
+        const targetProductId = state?.productId;
+
+        if (targetView === 'product' && targetProductId) {
+          const matched = current.products.find((p) => p.id === targetProductId);
+          if (matched) {
+            setSelectedProduct(matched);
+            setActiveView('product');
+          } else {
+            setActiveView('home');
+            setSelectedProduct(null);
+          }
+        } else {
+          setActiveView(targetView);
+          setSelectedProduct(null);
+        }
+
+        lastPushedKeyRef.current = `${targetView}:${targetProductId || ''}`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      // Allow state updates to settle before reenabling pushState
+      setTimeout(() => {
+        isPoppingRef.current = false;
+      }, 50);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    closeQuickLook,
+    closeShareModal,
+    setIsCheckoutOpen,
+    setIsWishlistOpen,
+    closeDeleteModal,
+    setActiveView,
+    setSelectedProduct
+  ]);
+
+  return (
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-stone-950 text-stone-100 selection:bg-amber-500 selection:text-black font-['Cairo',sans-serif]">
+      {/* Universal Floating Modals & Alerts */}
+      <ToastContainer />
+      <ShopifyOrderBanner />
+      <DeleteConfirmationModal />
+      <WishlistDrawer />
+
+      <React.Suspense fallback={null}>
+        <ProductShareModal />
+        <CheckoutModal />
+        <QuickLookModal />
+      </React.Suspense>
+
+      {/* Main Navigation Bar */}
+      <Navbar />
+
+      {/* Main Content Area */}
+      <main className="flex-1 w-full max-w-full overflow-x-hidden">
+        {activeView === 'home' && (
+          <>
+            <HeroCoverflow />
+            {/* Products Grid */}
+            <ProductGrid />
+            {/* Coming Soon */}
+            <ComingSoon />
+            {/* Customer Reviews - Image Gallery Only as requested */}
+            <CustomerReviewsGallery />
+          </>
+        )}
+
+        {/* Dedicated Standalone Cart Page */}
+        {activeView === 'cart' && (
+          <React.Suspense
+            fallback={
+              <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3 text-stone-400 py-16 animate-pulse">
+                <div className="w-8 h-8 rounded-full border-2 border-stone-800 border-t-amber-400 animate-spin" />
+                <span className="text-xs font-bold text-stone-500">جاري تحميل السلة...</span>
+              </div>
+            }
+          >
+            <CartPage />
+          </React.Suspense>
+        )}
+
+        {/* Dedicated Wishlist Page */}
+        {activeView === 'wishlist' && (
+          <React.Suspense
+            fallback={
+              <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3 text-stone-400 py-16 animate-pulse">
+                <div className="w-8 h-8 rounded-full border-2 border-stone-800 border-t-amber-400 animate-spin" />
+                <span className="text-xs font-bold text-stone-500">جاري تحميل المفضلة...</span>
+              </div>
+            }
+          >
+            <WishlistPage />
+          </React.Suspense>
+        )}
+
+        {/* Dedicated Product Detail Page */}
+        {activeView === 'product' && (
+          <React.Suspense
+            fallback={
+              <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3 text-stone-400 py-20 animate-pulse">
+                <div className="w-9 h-9 rounded-full border-2 border-stone-800 border-t-amber-400 animate-spin" />
+                <span className="text-xs font-bold text-stone-500">جاري تجهيز القطعة...</span>
+              </div>
+            }
+          >
+            <ProductDetailPage />
+          </React.Suspense>
+        )}
+
+        {/* Catalog View */}
+        {activeView === 'catalog' && (
+          <div className="pt-4">
+            <ProductGrid />
+          </div>
+        )}
+
+        {/* Order Tracking View */}
+        {activeView === 'tracking' && (
+          <React.Suspense
+            fallback={
+              <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3 text-stone-400 py-16 animate-pulse">
+                <div className="w-8 h-8 rounded-full border-2 border-stone-800 border-t-amber-400 animate-spin" />
+                <span className="text-xs font-bold text-stone-500">جاري التحميل...</span>
+              </div>
+            }
+          >
+            <OrderTrackingView />
+          </React.Suspense>
+        )}
+
+        {/* Customer Reviews View */}
+        {activeView === 'reviews' && (
+          <div className="pt-4">
+            <CustomerReviewsGallery />
+          </div>
+        )}
+
+        {/* Admin Dashboard */}
+        {activeView === 'admin' && (
+          <React.Suspense
+            fallback={<div className="min-h-[60vh] flex items-center justify-center text-stone-500 text-sm">جاري التحميل...</div>}
+          >
+            <AdminDashboard />
+          </React.Suspense>
+        )}
+      </main>
+
+      {/* Footer - Consistent across all views as requested */}
+      <Footer />
+    </div>
+  );
+}

@@ -1,0 +1,141 @@
+export type HoodieSize = 'M' | 'L' | 'XL' | '2XL';
+export type HoodieCategory = 'oversized' | 'basic' | 'zipup';
+
+export interface ProductColor {
+  name: string;
+  hex: string;
+  sizesStock?: Partial<Record<HoodieSize, number>>;
+}
+
+export interface SizeMeasurement {
+  length: number; // الطول بالسم
+  width: number;  // العرض بالسم
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  subtitle: string;
+  category: HoodieCategory;
+  price: number;
+  originalPrice?: number;
+  description: string;
+  fabric?: string;
+  fit: string; // قصة الهودي
+  weightRange?: string;
+  careInstructions?: string;
+  sizesStock: Record<HoodieSize, number>;
+  sizeMeasurements?: Partial<Record<HoodieSize, SizeMeasurement>>;
+  colors: ProductColor[];
+  images: string[];
+  isFeatured: boolean;
+  rating: number;
+  reviewsCount: number;
+  badge?: string;
+  comingSoon?: boolean; // قريباً
+}
+
+export interface CartItem {
+  id: string; // unique item id in cart (productId + size + color)
+  productId: string;
+  product: Product;
+  size: HoodieSize;
+  colorName?: string;
+  colorHex?: string;
+  quantity: number;
+  addedAt: number;
+}
+
+export type OrderStatus = 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+
+export interface OrderItem {
+  productId: string;
+  productName: string;
+  subtitle?: string; // تفاصيل الطبعة
+  image: string;
+  images?: string[]; // صور إضافية
+  size: HoodieSize;
+  colorName?: string;
+  colorHex?: string;
+  price: number;
+  quantity: number;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string; // e.g. "ORD-7821"
+  customerName: string;
+  phone: string;
+  alternatePhone?: string;
+  governorate: string;
+  center?: string; // المركز أو الحي
+  address: string; // العنوان التفصيلي
+  notes?: string;
+  items: OrderItem[];
+  subtotal: number;
+  shippingCost: number;
+  discount: number;
+  couponCode?: string;
+  total: number;
+  status: OrderStatus;
+  createdAt: string;
+  createdAtMs?: number;
+  updatedAt?: string;
+  cancelledAt?: string;
+}
+
+// Review is image-only as requested by the user
+export interface CustomerReviewImage {
+  id: string;
+  imageUrl: string;
+  caption?: string;
+  createdAt: string;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  discountPercent: number;
+  active: boolean;
+  minOrderAmount: number;
+  timesUsed: number;
+  targetProductId?: string; // منتج محدد
+  targetProductName?: string; // اسم المنتج المحدد
+}
+
+export interface GovernorateShipping {
+  name: string;
+  cost: number;
+  deliveryDays?: string;
+}
+
+export interface StoreSettings {
+  storeName: string;
+  storeSubtitle: string;
+  announcementText: string;
+  brandLogo?: string;
+  notificationLogoUrl?: string;
+  whatsappNumber: string;
+  whatsappUrl: string;
+  instagramUrl: string;
+  tiktokUrl: string;
+  facebookUrl: string;
+  freeShippingThreshold: number;
+  quantityShippingEnabled?: boolean;
+  quantityShippingMinItems?: number;
+  quantityShippingCost?: number;
+  comingSoonEnabled?: boolean;
+  comingSoonTitle?: string;
+  comingSoonSubtitle?: string;
+  pushNotificationTopic?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+}
+
+export interface AdminCredentials {
+  username: string;
+  password: string;
+  updatedAt?: string;
+}
+
+export type ActiveView = 'home' | 'catalog' | 'tracking' | 'reviews' | 'admin' | 'cart' | 'product' | 'wishlist';
